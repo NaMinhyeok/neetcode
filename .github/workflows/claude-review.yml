@@ -38,6 +38,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: "--dangerously-skip-permissions"
+          show_full_output: true
           prompt: |
             이 PR은 알고리즘 문제 풀이입니다. 다음 관점에서 리뷰해주세요:
 
