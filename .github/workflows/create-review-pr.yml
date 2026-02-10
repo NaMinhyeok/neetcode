@@ -63,10 +63,11 @@ jobs:
               continue
             fi
 
-            # reviewed 기준으로 브랜치 생성 → main에서 해당 파일만 가져오기
+            # reviewed 기준으로 브랜치 생성 → main에서 해당 파일 + 워크플로우 가져오기
             git checkout -B "$branch_name" origin/reviewed
             git checkout origin/main -- "$py_file"
-            git add "$py_file"
+            git checkout origin/main -- .github/workflows/
+            git add "$py_file" .github/workflows/
             git commit -m "solve: $problem_code"
             git push origin "$branch_name" --force
 
