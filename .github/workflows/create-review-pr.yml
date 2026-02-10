@@ -12,6 +12,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      pr_numbers: ${{ steps.collect.outputs.pr_numbers }}
 
     steps:
       - name: Checkout
@@ -45,10 +47,12 @@ jobs:
           echo "$FILES" > /tmp/changed_files.txt
 
       - name: Create per-problem PRs
+        id: collect
         if: steps.changed.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          PR_NUMS=""
           while IFS= read -r py_file; do
             # problems/{category}/{problem-code}/solution.py
             dir=$(dirname "$py_file")
@@ -112,7 +116,52 @@ jobs:
 
               gh label create "category/$category" --color "0075ca" --force 2>/dev/null || true
               gh pr edit "$PR_NUM" --add-label "category/$category" 2>/dev/null || true
+
+              # PR 번호 수집
+              PR_NUMS="${PR_NUMS}${PR_NUM},"
             fi
 
             echo "Created PR for $problem_code"
           done < /tmp/changed_files.txt
+
+          echo "pr_numbers=${PR_NUMS%,}" >> "$GITHUB_OUTPUT"
+
+  review:
+    needs: create-pr
+    if: needs.create-pr.outputs.pr_numbers != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    strategy:
+      matrix:
+        pr_number: ${{ fromJson(format('[{0}]', needs.create-pr.outputs.pr_numbers)) }}
+      max-parallel: 1
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ matrix.pr_number }}/head
+          fetch-depth: 1
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: "--dangerously-skip-permissions"
+          pr_number: ${{ matrix.pr_number }}
+          prompt: |
+            이 PR의 풀이만 리뷰해줘. 다른 PR은 보지 마.
+
+            1. **정확성**: 풀이가 모든 케이스를 올바르게 처리하는지
+            2. **시간/공간 복잡도**: Big-O 분석과 최적화 가능 여부
+            3. **알고리즘 선택**: 더 효율적인 접근법이 있는지
+            4. **엣지 케이스**: 놓친 경계 조건이 있는지
+            5. **코드 가독성**: 변수명, 구조, Pythonic한 작성
+            6. **학습 포인트**: 이 문제에서 배울 핵심 개념 정리
+
+            한국어로 리뷰해주세요. 리뷰 결과를 이 PR에 코멘트로 작성해줘.

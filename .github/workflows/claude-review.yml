@@ -1,9 +1,6 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    branches: [reviewed]
-    types: [opened, synchronize]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -15,7 +12,6 @@ jobs:
   review:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'pull_request') ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
@@ -38,14 +34,3 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: "--dangerously-skip-permissions"
-          prompt: |
-            이 PR은 알고리즘 문제 풀이입니다. 다음 관점에서 리뷰해주세요:
-
-            1. **정확성**: 풀이가 모든 케이스를 올바르게 처리하는지
-            2. **시간/공간 복잡도**: Big-O 분석과 최적화 가능 여부
-            3. **알고리즘 선택**: 더 효율적인 접근법이 있는지
-            4. **엣지 케이스**: 놓친 경계 조건이 있는지
-            5. **코드 가독성**: 변수명, 구조, Pythonic한 작성
-            6. **학습 포인트**: 이 문제에서 배울 핵심 개념 정리
-
-            한국어로 리뷰해주세요.
