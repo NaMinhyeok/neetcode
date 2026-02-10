@@ -19,6 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Ensure reviewed branch exists
         run: |
           if ! git ls-remote --heads origin reviewed | grep -q reviewed; then
@@ -37,58 +42,62 @@ jobs:
             exit 0
           fi
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          # Save to file for later steps
           echo "$FILES" > /tmp/changed_files.txt
 
-      - name: Build PR body
-        if: steps.changed.outputs.has_changes == 'true'
-        run: |
-          BODY=""
-          while IFS= read -r py_file; do
-            dir=$(dirname "$py_file")
-            readme="$dir/README.md"
-            if [ -f "$readme" ]; then
-              BODY+=$(cat "$readme")
-              BODY+=$'\n\n---\n\n'
-            fi
-          done < /tmp/changed_files.txt
-
-          echo "$BODY" > /tmp/pr_body.md
-
-      - name: Create or update PR
+      - name: Create per-problem PRs
         if: steps.changed.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EXISTING_PR=$(gh pr list --base reviewed --head main --state open --json number -q '.[0].number' || true)
+          while IFS= read -r py_file; do
+            # problems/{category}/{problem-code}/solution.py
+            dir=$(dirname "$py_file")
+            problem_code=$(basename "$dir")
+            category=$(echo "$py_file" | cut -d'/' -f2)
+            branch_name="review/${problem_code}"
 
-          if [ -n "$EXISTING_PR" ]; then
-            echo "Updating existing PR #$EXISTING_PR"
-            gh pr edit "$EXISTING_PR" --body-file /tmp/pr_body.md
-          else
-            echo "Creating new PR"
+            # 이미 해당 브랜치의 열린 PR이 있으면 스킵
+            EXISTING=$(gh pr list --base reviewed --head "$branch_name" --state open --json number -q '.[0].number' || true)
+            if [ -n "$EXISTING" ]; then
+              echo "PR #$EXISTING already exists for $problem_code, skipping"
+              continue
+            fi
+
+            # reviewed 기준으로 브랜치 생성 → main에서 해당 파일 + 워크플로우 가져오기
+            git checkout -B "$branch_name" origin/reviewed
+            git checkout origin/main -- "$py_file"
+            git checkout origin/main -- .github/workflows/
+            git add "$py_file" .github/workflows/
+            git commit -m "solve: $problem_code"
+            git push origin "$branch_name" --force
+
+            # README에서 메타 정보 추출
+            readme="$dir/README.md"
+            title="$problem_code"
+            difficulty=""
+            if [ -f "$readme" ]; then
+              title=$(head -1 "$readme" | sed 's/^# //')
+              difficulty=$(grep -oP '난이도 \| \K\w+' "$readme" || true)
+            fi
+
+            # PR 본문 = README 내용
+            pr_body="/tmp/pr_body_${problem_code}.md"
+            if [ -f "$readme" ]; then
+              cp "$readme" "$pr_body"
+            else
+              echo "풀이 리뷰" > "$pr_body"
+            fi
+
+            # PR 생성
             gh pr create \
               --base reviewed \
-              --head main \
-              --title "풀이 리뷰 요청" \
-              --body-file /tmp/pr_body.md
-          fi
+              --head "$branch_name" \
+              --title "$title" \
+              --body-file "$pr_body"
 
-      - name: Add labels
-        if: steps.changed.outputs.has_changes == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUM=$(gh pr list --base reviewed --head main --state open --json number -q '.[0].number')
-          [ -z "$PR_NUM" ] && exit 0
-
-          while IFS= read -r py_file; do
-            category=$(echo "$py_file" | cut -d'/' -f2)
-            dir=$(dirname "$py_file")
-            readme="$dir/README.md"
-
-            if [ -f "$readme" ]; then
-              difficulty=$(grep -oP '난이도 \| \K\w+' "$readme" || true)
+            # 라벨 추가
+            PR_NUM=$(gh pr list --base reviewed --head "$branch_name" --state open --json number -q '.[0].number')
+            if [ -n "$PR_NUM" ]; then
               if [ -n "$difficulty" ]; then
                 lower_diff=$(echo "$difficulty" | tr '[:upper:]' '[:lower:]')
                 case "$lower_diff" in
@@ -100,8 +109,10 @@ jobs:
                 gh label create "difficulty/$lower_diff" --color "$color" --force 2>/dev/null || true
                 gh pr edit "$PR_NUM" --add-label "difficulty/$lower_diff" 2>/dev/null || true
               fi
+
+              gh label create "category/$category" --color "0075ca" --force 2>/dev/null || true
+              gh pr edit "$PR_NUM" --add-label "category/$category" 2>/dev/null || true
             fi
 
-            gh label create "category/$category" --color "0075ca" --force 2>/dev/null || true
-            gh pr edit "$PR_NUM" --add-label "category/$category" 2>/dev/null || true
+            echo "Created PR for $problem_code"
           done < /tmp/changed_files.txt
