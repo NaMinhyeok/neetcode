@@ -3,5 +3,9 @@
 # https://leetcode.com/problems/contains-duplicate/
 
 class Solution:
-    def containsDuplicate(self, nums: List[int]) -> bool:
-        
+    # 시간 복잡도 : O(N)
+    # 공간 복잡도 : O(N)
+    def hasDuplicate(self, nums: List[int]) -> bool:
+        unique = list(set(nums))
+
+        return len(unique) != len(nums)
