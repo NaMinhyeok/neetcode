@@ -1,0 +1,10 @@
+[project]
+name = "neetcode"
+version = "0.1.0"
+description = "NeetCode 150 학습 시스템"
+requires-python = ">=3.13"
+dependencies = [
+    "requests>=2.32",
+    "markdownify>=1.1",
+    "jinja2>=3.1",
+]

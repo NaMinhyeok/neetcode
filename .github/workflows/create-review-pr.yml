@@ -1,0 +1,107 @@
+name: Create Review PR
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "problems/**/*.py"
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure reviewed branch exists
+        run: |
+          if ! git ls-remote --heads origin reviewed | grep -q reviewed; then
+            git branch reviewed origin/main
+            git push origin reviewed
+          fi
+          git fetch origin reviewed
+
+      - name: Get changed solution files
+        id: changed
+        run: |
+          FILES=$(git diff --name-only origin/reviewed..HEAD -- 'problems/**/*.py' || true)
+          if [ -z "$FILES" ]; then
+            echo "No solution files changed"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          # Save to file for later steps
+          echo "$FILES" > /tmp/changed_files.txt
+
+      - name: Build PR body
+        if: steps.changed.outputs.has_changes == 'true'
+        run: |
+          BODY=""
+          while IFS= read -r py_file; do
+            dir=$(dirname "$py_file")
+            readme="$dir/README.md"
+            if [ -f "$readme" ]; then
+              BODY+=$(cat "$readme")
+              BODY+=$'\n\n---\n\n'
+            fi
+          done < /tmp/changed_files.txt
+
+          echo "$BODY" > /tmp/pr_body.md
+
+      - name: Create or update PR
+        if: steps.changed.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_PR=$(gh pr list --base reviewed --head main --state open --json number -q '.[0].number' || true)
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Updating existing PR #$EXISTING_PR"
+            gh pr edit "$EXISTING_PR" --body-file /tmp/pr_body.md
+          else
+            echo "Creating new PR"
+            gh pr create \
+              --base reviewed \
+              --head main \
+              --title "풀이 리뷰 요청" \
+              --body-file /tmp/pr_body.md
+          fi
+
+      - name: Add labels
+        if: steps.changed.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM=$(gh pr list --base reviewed --head main --state open --json number -q '.[0].number')
+          [ -z "$PR_NUM" ] && exit 0
+
+          while IFS= read -r py_file; do
+            category=$(echo "$py_file" | cut -d'/' -f2)
+            dir=$(dirname "$py_file")
+            readme="$dir/README.md"
+
+            if [ -f "$readme" ]; then
+              difficulty=$(grep -oP '난이도 \| \K\w+' "$readme" || true)
+              if [ -n "$difficulty" ]; then
+                lower_diff=$(echo "$difficulty" | tr '[:upper:]' '[:lower:]')
+                case "$lower_diff" in
+                  easy)   color="00b8a3" ;;
+                  medium) color="ffc01e" ;;
+                  hard)   color="ff375f" ;;
+                  *)      color="cccccc" ;;
+                esac
+                gh label create "difficulty/$lower_diff" --color "$color" --force 2>/dev/null || true
+                gh pr edit "$PR_NUM" --add-label "difficulty/$lower_diff" 2>/dev/null || true
+              fi
+            fi
+
+            gh label create "category/$category" --color "0075ca" --force 2>/dev/null || true
+            gh pr edit "$PR_NUM" --add-label "category/$category" 2>/dev/null || true
+          done < /tmp/changed_files.txt

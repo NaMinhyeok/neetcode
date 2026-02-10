@@ -1,0 +1,69 @@
+# 647. Palindromic Substrings
+
+| 항목 | 내용 |
+|------|------|
+| 난이도 | Medium |
+| 카테고리 | 1-D Dynamic Programming |
+| NeetCode | [문제 링크](https://neetcode.io/problems/palindromic-substrings) |
+| LeetCode | [문제 링크](https://leetcode.com/problems/palindromic-substrings/) |
+| 영상 풀이 | [NeetCode YouTube](https://www.youtube.com/watch?v=4RACzI5-du8) |
+| Topics | Two Pointers, String, Dynamic Programming |
+
+---
+
+## 문제 설명
+
+Given a string `s`, return *the number of **palindromic substrings** in it*.
+
+A string is a **palindrome** when it reads the same backward as forward.
+
+A **substring** is a contiguous sequence of characters within the string.
+
+**Example 1:**
+
+```
+Input: s = "abc"
+Output: 3
+Explanation: Three palindromic strings: "a", "b", "c".
+```
+
+**Example 2:**
+
+```
+Input: s = "aaa"
+Output: 6
+Explanation: Six palindromic strings: "a", "a", "a", "aa", "aa", "aaa".
+```
+
+**Constraints:**
+
+- `1 <= s.length <= 1000`
+- `s` consists of lowercase English letters.
+
+---
+
+
+
+<details><summary>💡 Hint 1</summary>
+
+How can we reuse a previously computed palindrome to compute a larger palindrome?
+
+</details>
+
+
+<details><summary>💡 Hint 2</summary>
+
+If “aba” is a palindrome, is “xabax” a palindrome? Similarly is “xabay” a palindrome?
+
+</details>
+
+
+<details><summary>💡 Hint 3</summary>
+
+Complexity based hint:</br>
+If we use brute force and check whether for every start and end position a substring is a palindrome we have O(n^2) start - end pairs and O(n) palindromic checks. Can we reduce the time for palindromic checks to O(1) by reusing some previous computation?
+
+</details>
+
+
+

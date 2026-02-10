@@ -1,0 +1,29 @@
+# {{ number }}. {{ title }}
+
+| 항목 | 내용 |
+|------|------|
+| 난이도 | {{ difficulty }} |
+| 카테고리 | {{ category }} |
+| NeetCode | [문제 링크](https://neetcode.io/problems/{{ neetcode_slug }}) |
+| LeetCode | [문제 링크](https://leetcode.com/problems/{{ leetcode_slug }}/) |
+| 영상 풀이 | [NeetCode YouTube]({{ youtube_url }}) |
+{% if topics %}| Topics | {{ topics | join(', ') }} |
+{% endif %}
+---
+
+## 문제 설명
+
+{{ description }}
+
+---
+
+{% if hints %}
+{% for hint in hints %}
+<details><summary>💡 Hint {{ loop.index }}</summary>
+
+{{ hint }}
+
+</details>
+
+{% endfor %}
+{% endif %}
