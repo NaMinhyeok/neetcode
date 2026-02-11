@@ -1,6 +1,9 @@
 name: Claude Code Review
 
 on:
+  pull_request:
+    types: [opened]
+    branches: [reviewed]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -9,7 +12,42 @@ on:
     types: [submitted]
 
 jobs:
-  review:
+  auto-review:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' &&
+      startsWith(github.head_ref, 'review/')
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: "--dangerously-skip-permissions"
+          prompt: |
+            이 PR의 풀이만 리뷰해줘. 다른 PR은 보지 마.
+
+            1. **정확성**: 풀이가 모든 케이스를 올바르게 처리하는지
+            2. **시간/공간 복잡도**: Big-O 분석과 최적화 가능 여부
+            3. **알고리즘 선택**: 더 효율적인 접근법이 있는지
+            4. **엣지 케이스**: 놓친 경계 조건이 있는지
+            5. **코드 가독성**: 변수명, 구조, Pythonic한 작성
+            6. **학습 포인트**: 이 문제에서 배울 핵심 개념 정리
+
+            한국어로 리뷰해주세요. 리뷰 결과를 이 PR에 코멘트로 작성해줘.
+
+  interactive-review:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
