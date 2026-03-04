@@ -33,17 +33,25 @@ jobs:
           fi
           git fetch origin reviewed
 
-      - name: Get changed solution files
+      - name: Get changed solution files from this push
         id: changed
         run: |
-          FILES=$(git diff --name-only origin/reviewed..HEAD -- 'problems/**/*.py' || true)
+          BEFORE_SHA="${{ github.event.before }}"
+          AFTER_SHA="${{ github.sha }}"
+
+          # For the very first push event, 'before' can be all-zero SHA.
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA=$(git rev-list --max-parents=0 "$AFTER_SHA")
+          fi
+
+          FILES=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- 'problems/**/*.py' || true)
           if [ -z "$FILES" ]; then
-            echo "No solution files changed"
+            echo "No solution files changed in this push"
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          echo "$FILES" > /tmp/changed_files.txt
+          printf "%s\n" "$FILES" > /tmp/changed_files.txt
 
       - name: Sync workflows to reviewed branch
         if: steps.changed.outputs.has_changes == 'true'
@@ -72,10 +80,25 @@ jobs:
             # 이미 해당 브랜치의 열린 PR이 있는지 확인
             EXISTING=$(gh pr list --base reviewed --head "$branch_name" --state open --json number -q '.[0].number' || true)
 
+            # 기존 PR이 있고 파일 내용이 이미 최신이면 불필요한 force push를 건너뜀
+            if [ -n "$EXISTING" ]; then
+              git fetch origin "$branch_name":"refs/remotes/origin/$branch_name" 2>/dev/null || true
+              main_blob=$(git rev-parse "origin/main:$py_file" 2>/dev/null || true)
+              branch_blob=$(git rev-parse "origin/$branch_name:$py_file" 2>/dev/null || true)
+              if [ -n "$main_blob" ] && [ "$main_blob" = "$branch_blob" ]; then
+                echo "PR #$EXISTING already up to date for $problem_code"
+                continue
+              fi
+            fi
+
             # reviewed 기준으로 브랜치 생성 → main에서 해당 파일만 가져오기
             git checkout -B "$branch_name" origin/reviewed
             git checkout origin/main -- "$py_file"
             git add "$py_file"
+            if git diff --cached --quiet; then
+              echo "No diff to commit for $problem_code"
+              continue
+            fi
             git commit -m "solve: $problem_code"
             git push origin "$branch_name" --force
 
